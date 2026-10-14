@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>高雄 ATM 智慧地圖與資訊網</title>
+    <!-- Tailwind CSS for modern responsive UI -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Leaflet CSS for interactive maps -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- FontAwesome for iconography -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        #map { height: 100%; min-height: 450px; z-index: 10; }
+        .custom-popup .leaflet-popup-content-wrapper { border-radius: 1rem; padding: 0.5rem; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 flex flex-col min-h-screen">
+
+    <header class="bg-gradient-to-r from-blue-700 to-indigo-800 text-white shadow-lg sticky top-0 z-30">
+        <div class="max-w-7xl mx-auto px-4 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
+            <div class="flex items-center gap-3">
+                <div class="bg-white/10 p-3 rounded-2xl backdrop-blur-md">
+                    <i class="fa-solid fa-map-location-dot text-2xl text-blue-200"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl md:text-2xl font-bold tracking-tight">高雄市 ATM 分布地圖</h1>
+                    <p class="text-xs md:text-sm text-blue-200">依據官方清單精準定位與查詢</p>
+                </div>
+            </div>
+            <!-- Search and Filter Bar -->
+            <div class="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                <div class="relative flex-1 md:w-64">
+                    <span class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                    </span>
+                    <input type="text" id="searchInput" placeholder="搜尋 ATM 名稱、銀行或地址..." 
+                        class="w-full pl-10 pr-4 py-2 bg-white/10 border border-white/20 rounded-xl text-white placeholder-blue-200 focus:outline-none focus:ring-2 focus:ring-white/50 text-sm">
+                </div>
+                <select id="districtFilter" class="bg-blue-900/80 border border-white/20 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-white/50">
+                    <option value="">所有行政區</option>
+                    <option value="鼓山區">鼓山區</option>
+                    <option value="前金區">前金區</option>
+                    <option value="旗津區">旗津區</option>
+                    <option value="三民區">三民區</option>
+                    <option value="苓雅區">苓雅區</option>
+                    <option value="左營區">左營區</option>
+                    <option value="鳳山區">鳳山區</option>
+                </select>
+                <select id="bankFilter" class="bg-blue-900/80 border border-white/20 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-white/50">
+                    <option value="">所有銀行</option>
+                </select>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 grid grid-cols-1 lg:grid-cols-12 gap-6 my-4">
+        
+        <!-- Left Column: ATM List & Stats -->
+        <section class="lg:col-span-5 flex flex-col bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden h-[600px] lg:h-[calc(100vh-160px)]">
+            <div class="p-4 bg-slate-100 border-b border-slate-200 flex justify-between items-center">
+                <h2 class="font-semibold text-slate-700 text-sm flex items-center gap-2">
+                    <i class="fa-solid fa-list-ul text-blue-600"></i> ATM 據點清單 
+                    <span id="atmCount" class="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full font-bold">24</span>
+                </h2>
+                <span class="text-xs text-slate-500">點擊卡片地圖聚焦</span>
+            </div>
+            <div id="atmListContainer" class="flex-1 overflow-y-auto p-3 space-y-3 divide-y divide-slate-100">
+                <!-- Dynamically populated by JS -->
+            </div>
+        </section>
+
+        <!-- Right Column: Interactive Map -->
+        <section class="lg:col-span-7 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden h-[500px] lg:h-[calc(100vh-160px)] flex flex-col relative">
+            <div id="map" class="flex-1 w-full"></div>
+        </section>
+
+    </main>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // Exact CSV Data parsed safely into structured JSON objects
+        const atmData = [
+            { id: 1, name: "台新銀行ATM-全家西子灣店", bank: "台新銀行", district: "鼓山區", address: "高雄市鼓山區蓮海路70號", hours: "24小時", lat: 22.6285, lng: 120.2678 },
+            { id: 2, name: "鼓山郵局ATM", bank: "中華郵政", district: "鼓山區", address: "高雄市鼓山區臨海二路17號", hours: "24小時", lat: 22.6225, lng: 120.2731 },
+            { id: 3, name: "臺灣銀行ATM", bank: "臺灣銀行", district: "前金區", address: "高雄市前金區中正四路264號", hours: "24小時", lat: 22.6271, lng: 120.2913 },
+            { id: 4, name: "國泰世華銀行ATM", bank: "國泰世華銀行", district: "鼓山區", address: "高雄市鼓山區臨海一路21-3號", hours: "24小時", lat: 22.6234, lng: 120.2745 },
+            { id: 5, name: "高雄銀行鼓山分行自動提款機ATM", bank: "高雄銀行", district: "鼓山區", address: "高雄市鼓山區九如四路1018號", hours: "24小時", lat: 22.6612, lng: 120.2831 },
+            { id: 6, name: "高雄銀行旗津分行ATM", bank: "高雄銀行", district: "旗津區", address: "高雄市旗津區通山路54號", hours: "24小時", lat: 22.6087, lng: 120.2709 },
+            { id: 7, name: "臺灣企銀ATM", bank: "臺灣企銀", district: "鼓山區", address: "高雄市鼓山區鼓山二路39號", hours: "24小時", lat: 22.6356, lng: 120.2812 },
+            { id: 8, name: "國泰世華ATM (高雄分行)", bank: "國泰世華銀行", district: "三民區", address: "高雄市三民區博愛一路366號", hours: "24小時", lat: 22.6451, lng: 120.3032 },
+            { id: 9, name: "臺灣銀行ATM (三民)", bank: "臺灣銀行", district: "三民區", address: "高雄市三民區建國三路50號", hours: "24小時", lat: 22.6367, lng: 120.2934 },
+            { id: 10, name: "中國信託商業銀行ATM (三民分行)", bank: "中國信託", district: "三民區", address: "高雄市三民區九如二路366號", hours: "24小時", lat: 22.6412, lng: 120.3015 },
+            { id: 11, name: "第一銀行ATM", bank: "第一銀行", district: "三民區", address: "高雄市三民區中華三路291號", hours: "24小時", lat: 22.6321, lng: 120.2976 },
+            { id: 12, name: "國泰世華ATM (苓雅分行)", bank: "國泰世華銀行", district: "苓雅區", address: "高雄市苓雅區林森二路89號", hours: "24小時", lat: 22.6178, lng: 120.3074 },
+            { id: 13, name: "臺灣銀行ATM (苓雅)", bank: "臺灣銀行", district: "苓雅區", address: "高雄市苓雅區成功一路261號", hours: "24小時", lat: 22.6189, lng: 120.2985 },
+            { id: 14, name: "彰化銀行苓雅分行ATM", bank: "彰化銀行", district: "苓雅區", address: "高雄市苓雅區四維四路2號", hours: "24小時", lat: 22.6154, lng: 120.2941 },
+            { id: 15, name: "苓雅郵局ATM", bank: "中華郵政", district: "苓雅區", address: "高雄市苓雅區成功一路134號", hours: "24小時", lat: 22.6212, lng: 120.2982 },
+            { id: 16, name: "聯邦銀行苓雅分行ATM", bank: "聯邦銀行", district: "苓雅區", address: "高雄市苓雅區四維四路30號", hours: "24小時", lat: 22.6156, lng: 120.2948 },
+            { id: 17, name: "國泰世華ATM (左營分行)", bank: "國泰世華銀行", district: "左營區", address: "高雄市左營區博愛二路366號", hours: "24小時", lat: 22.6654, lng: 120.3041 },
+            { id: 18, name: "臺灣銀行ATM (左營大路)", bank: "臺灣銀行", district: "左營區", address: "高雄市左營區左營大路19號", hours: "24小時", lat: 22.6841, lng: 120.2882 },
+            { id: 19, name: "陽信銀行左營分行ATM", bank: "陽信銀行", district: "左營區", address: "高雄市左營區博愛二路102號", hours: "24小時", lat: 22.6589, lng: 120.3039 },
+            { id: 20, name: "臺灣土地銀行左營分行ATM", bank: "臺灣土地銀行", district: "左營區", address: "高雄市左營區華夏路1237號", hours: "24小時", lat: 22.6712, lng: 120.3092 },
+            { id: 21, name: "國泰世華ATM (鳳山分行)", bank: "國泰世華銀行", district: "鳳山區", address: "高雄市鳳山區中山西路203號", hours: "24小時", lat: 22.6281, lng: 120.3552 },
+            { id: 22, name: "臺灣銀行ATM (鳳山)", bank: "臺灣銀行", district: "鳳山區", address: "高雄市鳳山區曹公路20號", hours: "24小時", lat: 22.6262, lng: 120.3584 },
+            { id: 23, name: "高雄銀行ATM (鳳山)", bank: "高雄銀行", district: "鳳山區", address: "高雄市鳳山區光復路二段132號", hours: "24小時", lat: 22.6315, lng: 120.3621 },
+            { id: 24, name: "永豐銀行ATM (鳳山分行)", bank: "永豐銀行", district: "鳳山區", address: "高雄市鳳山區光遠路366號", hours: "24小時", lat: 22.6251, lng: 120.3672 }
+        ];
+
+        // Initialize Map centered on Kaohsiung City
+        const map = L.map('map').setView([22.6273, 120.3014], 13);
+
+        // Add OpenStreetMap tile layer
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        let markersLayer = L.layerGroup().addTo(map);
+
+        // Populate Bank Filter dropdown dynamically
+        const bankFilterSelect = document.getElementById('bankFilter');
+        const uniqueBanks = [...new Set(atmData.map(item => item.bank))];
+        uniqueBanks.forEach(bank => {
+            const option = document.createElement('option');
+            option.value = bank;
+            option.textContent = bank;
+            bankFilterSelect.appendChild(option);
+        });
+
+        // Function to render markers and list items
+        function renderATMs(dataToRender) {
+            markersLayer.clearLayers();
+            const listContainer = document.getElementById('atmListContainer');
+            listContainer.innerHTML = '';
+            document.getElementById('atmCount').textContent = dataToRender.length;
+
+            if (dataToRender.length === 0) {
+                listContainer.innerHTML = `<div class="text-center py-10 text-slate-400 text-sm">找不到符合條件的 ATM 據點</div>`;
+                return;
+            }
+
+            const bounds = [];
+
+            dataToRender.forEach(atm => {
+                bounds.push([atm.lat, atm.lng]);
+
+                // Create Marker
+                const marker = L.marker([atm.lat, atm.lng]);
+                marker.bindPopup(`
+                    <div class="p-2">
+                        <span class="inline-block px-2 py-0.5 bg-blue-100 text-blue-800 text-xs font-semibold rounded mb-1">${atm.bank}</span>
+                        <h3 class="font-bold text-slate-800 text-sm mb-1">${atm.name}</h3>
+                        <p class="text-xs text-slate-600 mb-1"><i class="fa-solid fa-location-dot text-red-500 mr-1"></i>${atm.address}</p>
+                        <p class="text-xs text-slate-500"><i class="fa-regular fa-clock text-emerald-500 mr-1"></i>營業時間：${atm.hours}</p>
+                    </div>
+                `);
+                markersLayer.addLayer(marker);
+
+                // Create Sidebar List Card
+                const card = document.createElement('div');
+                card.className = "p-3 hover:bg-blue-50/60 rounded-xl transition cursor-pointer border border-transparent hover:border-blue-200";
+                card.innerHTML = `
+                    <div class="flex justify-between items-start mb-1">
+                        <span class="text-xs font-semibold px-2 py-0.5 bg-slate-100 text-slate-700 rounded-md">${atm.district}</span>
+                        <span class="text-xs font-bold text-blue-600">${atm.bank}</span>
+                    </div>
+                    <h3 class="font-semibold text-slate-800 text-sm mb-1">${atm.name}</h3>
+                    <p class="text-xs text-slate-500 mb-2"><i class="fa-solid fa-location-dot text-slate-400 mr-1"></i>${atm.address}</p>
+                    <div class="flex items-center justify-between text-xs text-slate-400">
+                        <span><i class="fa-regular fa-clock mr-1"></i>${atm.hours}</span>
+                        <span class="text-blue-600 font-medium hover:underline">查看地圖 <i class="fa-solid fa-arrow-right ml-0.5"></i></span>
+                    </div>
+                `;
+
+                card.addEventListener('click', () => {
+                    map.setView([atm.lat, atm.lng], 16);
+                    marker.openPopup();
+                });
+
+                listContainer.appendChild(card);
+            });
+
+            if (dataToRender.length > 0) {
+                map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
+            }
+        }
+
+        // Event Listeners for Filters & Search
+        function filterData() {
+            const query = document.getElementById('searchInput').value.toLowerCase();
+            const selectedDistrict = document.getElementById('districtFilter').value;
+            const selectedBank = document.getElementById('bankFilter').value;
+
+            const filtered = atmData.filter(atm => {
+                const matchesQuery = atm.name.toLowerCase().includes(query) || 
+                                     atm.address.toLowerCase().includes(query) || 
+                                     atm.bank.toLowerCase().includes(query);
+                const matchesDistrict = !selectedDistrict || atm.district === selectedDistrict;
+                const matchesBank = !selectedBank || atm.bank === selectedBank;
+
+                return matchesQuery && matchesDistrict && matchesBank;
+            });
+
+            renderATMs(filtered);
+        }
+
+        document.getElementById('searchInput').addEventListener('input', filterData);
+        document.getElementById('districtFilter').addEventListener('change', filterData);
+        document.getElementById('bankFilter').addEventListener('change', filterData);
+
+        // Initial render on load
+        window.onload = function() {
+            renderATMs(atmData);
+        };
+    </script>
+</body>
+</html>
